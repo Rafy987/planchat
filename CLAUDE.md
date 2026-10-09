@@ -44,10 +44,10 @@ This is a portfolio project. It must be real, deployed with a live link, and hav
 3. Chunking: split text into chunks, keep page numbers
 4. Embeddings + store chunks in pgvector
 5. Ask endpoint: question → find similar chunks → send to Groq → answer with page citations
-6. Flooring schedule extractor (agent tool) + CSV export
-7. Evaluation: 20 test questions, measure accuracy, show score in README
-8. Rate limiting + basic error handling
-9. Frontend (Next.js + TypeScript + Tailwind): upload page + chat page
+6. Frontend (Next.js + TypeScript + Tailwind): upload page + chat page (moved up so a working UI exists early)
+7. Flooring schedule extractor (agent tool) + CSV export
+8. Evaluation: 20 test questions, measure accuracy, show score in README
+9. Rate limiting + basic error handling
 10. GitHub Actions CI, deploy, final README (live link, screenshot, architecture diagram, how to run)
 
 ## Rules
