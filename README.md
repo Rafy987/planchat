@@ -63,3 +63,9 @@ curl.exe -F "file=@plans.pdf" http://localhost:8000/documents
 ```powershell
 pytest
 ```
+
+## License
+
+This project is licensed under the **GNU Affero General Public License v3.0** — see [LICENSE](LICENSE).
+
+PlanChat uses [PyMuPDF](https://pymupdf.readthedocs.io/) for PDF text extraction, which is AGPL-3.0 licensed, so this project uses the same license. In short: anyone may use, change and share this code, but if they run a modified version as a web service, they must also share their source code.
