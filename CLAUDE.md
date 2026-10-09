@@ -23,18 +23,23 @@ This is a portfolio project. It must be real, deployed with a live link, and hav
 - Never put API keys in code. Use a `.env` file and keep `.env` in `.gitignore`. Provide `.env.example`.
 
 ## Tech stack
-- Backend: Python 3.11+, FastAPI
+- Backend: Python 3.13, FastAPI
 - PDF reading: pypdf or PyMuPDF
-- Database: PostgreSQL with pgvector (run locally via Docker Compose)
+- Database: Neon (cloud PostgreSQL with pgvector). Connection string goes in `.env` as `DATABASE_URL`
 - LLM: Groq API (LLaMA models)
 - Embeddings: a free/open embedding model (e.g. sentence-transformers) or an embeddings API — discuss with me first
 - Frontend: Next.js + TypeScript + Tailwind (later phase)
 - Testing: pytest (backend), Postman collection for API
-- DevOps: Docker, Docker Compose, GitHub Actions (run tests on every push)
-- Deploy: Render or Railway (backend + DB), Vercel (frontend)
+- DevOps: Dockerfile (built and tested in GitHub Codespaces), GitHub Actions (run tests on every push)
+- Deploy: Render or Railway (backend), Neon (DB), Vercel (frontend)
+
+## Dev environment
+- Docker does NOT work on my laptop. Local dev uses a Python 3.13 virtual env (`.venv`), no Docker.
+- Database is Neon in the cloud, not a local Postgres container.
+- Anything Docker-related (Dockerfile, builds, container tests) is done in GitHub Codespaces.
 
 ## Build phases (in order)
-1. Project setup: folder structure, virtual env, FastAPI "hello" endpoint, Dockerfile, docker-compose with Postgres + pgvector
+1. Project setup: folder structure, virtual env, FastAPI "hello" endpoint, pytest (Dockerfile added later and tested in Codespaces)
 2. PDF upload endpoint: save file, extract text page by page
 3. Chunking: split text into chunks, keep page numbers
 4. Embeddings + store chunks in pgvector
