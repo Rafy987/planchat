@@ -2,10 +2,11 @@
 
 AI assistant for construction plan sets and spec books (PDFs). Ask questions, get answers with page citations.
 
-> Work in progress — currently Phase 1 (project setup).
+> Work in progress — currently Phase 2 (PDF upload + text extraction).
 
 ## Tech (so far)
 - Python 3.13, FastAPI, Uvicorn
+- PyMuPDF for PDF text extraction
 - pytest for tests
 - Database: Neon (cloud Postgres + pgvector) — coming in a later phase
 
@@ -33,6 +34,29 @@ Open http://localhost:8000/docs to see the API.
 |--------|-----------|-----------------------------------------|
 | GET    | `/`       | `{"message": "Hello from PlanChat"}`    |
 | GET    | `/health` | `{"status": "ok"}`                      |
+| POST   | `/documents` | Upload a PDF; returns its text page by page |
+
+### Upload a PDF
+
+```powershell
+curl.exe -F "file=@plans.pdf" http://localhost:8000/documents
+```
+
+```json
+{
+  "document_id": "e7b28945a43b47a6b067b439a88a4507",
+  "filename": "plans.pdf",
+  "page_count": 2,
+  "pages": [
+    {"page_number": 1, "text": "Sheet A-101", "has_text": true},
+    {"page_number": 2, "text": "Room 204: Carpet Tile CPT-1", "has_text": true}
+  ]
+}
+```
+
+- Files are saved to `uploads/<document_id>.pdf` (git-ignored).
+- `has_text: false` usually means a scanned page (image only). OCR is not supported yet.
+- Errors: `400` for empty, non-PDF or damaged files; `413` for files over 50 MB.
 
 ## Run tests
 
