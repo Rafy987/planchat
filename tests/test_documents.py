@@ -67,6 +67,18 @@ def test_page_without_text_is_flagged():
     assert body["pages"][1] == {"page_number": 2, "text": "", "has_text": False}
 
 
+def test_upload_returns_chunks_with_page_numbers():
+    body = upload(make_pdf(SAMPLE_PAGES + [""])).json()
+
+    # 3 short pages with text -> one chunk each; the empty 4th page -> no chunk.
+    assert body["chunk_count"] == 3
+    assert [(c["page_number"], c["text"]) for c in body["chunks"]] == [
+        (1, SAMPLE_PAGES[0]),
+        (2, SAMPLE_PAGES[1]),
+        (3, SAMPLE_PAGES[2]),
+    ]
+
+
 def test_rejects_non_pdf_even_with_pdf_name():
     response = upload(b"hello, I am a text file", filename="fake.pdf")
 

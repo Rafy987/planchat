@@ -8,8 +8,16 @@ class PageText(BaseModel):
     has_text: bool
 
 
+class Chunk(BaseModel):
+    chunk_index: int
+    page_number: int
+    text: str
+
+
 class DocumentUploadResponse(BaseModel):
     document_id: str
     filename: str
     page_count: int
     pages: list[PageText]
+    chunk_count: int
+    chunks: list[Chunk]

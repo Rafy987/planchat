@@ -2,9 +2,10 @@ import uuid
 
 from fastapi import FastAPI, HTTPException, UploadFile
 
+from app.chunking import chunk_pages
 from app.config import settings
 from app.pdf_utils import InvalidPDFError, extract_pages
-from app.schemas import DocumentUploadResponse, PageText
+from app.schemas import Chunk, DocumentUploadResponse, PageText
 
 app = FastAPI(title=settings.app_name)
 
@@ -50,9 +51,13 @@ def upload_document(file: UploadFile):
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     (settings.upload_dir / f"{document_id}.pdf").write_bytes(pdf_bytes)
 
+    chunks = chunk_pages(pages, settings.chunk_size, settings.chunk_overlap)
+
     return DocumentUploadResponse(
         document_id=document_id,
         filename=file.filename or "upload.pdf",
         page_count=len(pages),
         pages=[PageText(**page, has_text=bool(page["text"])) for page in pages],
+        chunk_count=len(chunks),
+        chunks=[Chunk(**chunk) for chunk in chunks],
     )
