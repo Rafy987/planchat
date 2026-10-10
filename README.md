@@ -160,6 +160,29 @@ The text is split into small pieces (**chunks**) so that later only the few piec
 - A document and all its chunks are saved in **one transaction**: either everything is saved or nothing is.
 - A **connection pool** reuses open database connections. Opening a new one to Neon takes seconds; reusing one is near-instant.
 
+## Accuracy
+
+PlanChat is checked with 20 questions about 2 made-up sample documents (a clinic plan set and a library spec book), each with a known answer and page. Scoring uses simple rules, no AI judge: the answer must contain the right codes/room numbers and none of the wrong ones, and must cite the right page. "Not in the document" questions must say so.
+
+<!-- EVAL:START -->
+_Last run: 2026-10-10, 20 questions on 2 made-up sample documents. Details per question: [evaluation/results.md](evaluation/results.md)._
+
+| | Hybrid search (used by the app) | Vector search only |
+|---|---|---|
+| Answer correct | **95% (19/20)** | 95% (19/20) |
+| Cites the right page | **100% (20/20)** | 100% (20/20) |
+| Right page found by search | **100% (17/17)** | 100% (17/17) |
+
+| Flooring schedule extractor | Score |
+|---|---|
+| Product codes found | **93% (13/14)** |
+| Correct category (of found) | 100% (13/13) |
+| Exactly the right rooms (of found) | 100% (13/13) |
+| Extra codes that shouldn't be there | 0  |
+<!-- EVAL:END -->
+
+**Limits:** 20 questions on documents I wrote is a small test. It shows the system works and catches regressions, but it doesn't prove accuracy on every real plan set. LLM answers can vary slightly between runs.
+
 ## Run tests
 
 ```powershell

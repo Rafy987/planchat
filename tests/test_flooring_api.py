@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-import app.main
+import app.search
 from app import answer, extractor
 from app.db import save_document
 from app.embeddings import EMBEDDING_DIM
@@ -168,11 +168,11 @@ def test_deleting_document_deletes_its_schedule(plan_set, fake_extractor_llm, db
 def capture_prompt(monkeypatch):
     """Fake LLM that records the prompt. The question 'means' page 3 (door hardware),
     so vector search alone would NOT find the LVP pages."""
-    monkeypatch.setattr(app.main, "embed_texts", lambda texts: [direction(2)])
-    monkeypatch.setattr(app.main.settings, "top_k", 1)
+    monkeypatch.setattr(app.search, "embed_texts", lambda texts: [direction(2)])
+    monkeypatch.setattr(app.search.settings, "top_k", 1)
     seen = {}
 
-    def fake_complete(system, user):
+    def fake_complete(system, user, **kwargs):
         seen["prompt"] = user
         return {"text": "Rooms 205 and 206 have LVP-1 [p. 2].", "provider": "groq", "model": "test"}
 

@@ -14,16 +14,9 @@ from app.config import settings
 from app.db import close_pool, init_db, load_flooring, save_document, save_flooring
 from app.embeddings import embed_texts, get_model
 from app.extractor import extract_flooring
-from app.flooring import expand_question
 from app.llm import LLMUnavailableError
 from app.pdf_utils import InvalidPDFError, extract_pages
-from app.retrieval import (
-    document_exists,
-    find_chunks_by_keywords,
-    find_similar_chunks,
-    get_all_chunks,
-    get_document,
-)
+from app.retrieval import document_exists, get_all_chunks, get_document
 from app.schemas import (
     AskRequest,
     AskResponse,
@@ -31,6 +24,7 @@ from app.schemas import (
     DocumentUploadResponse,
     FlooringSchedule,
 )
+from app.search import search
 
 
 @asynccontextmanager
@@ -125,23 +119,12 @@ def ask(request: AskRequest):
     if not document_exists(request.document_id):
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # 1. Hybrid search. Flooring words in the question ("resilient") are expanded
-    #    with the codes plans actually use (LVP, LVT, VCT...).
-    expansion = expand_question(request.question)
-    #    a) chunks closest in MEANING (embedding of the question + related terms)
-    question_embedding = embed_texts([expansion["search_text"]])[0]
-    chunks = find_similar_chunks(request.document_id, question_embedding, settings.top_k)
-    #    b) plus chunks containing the exact codes/terms, which embeddings often miss
-    chunks += find_chunks_by_keywords(
-        request.document_id,
-        expansion["keywords"],
-        limit=settings.keyword_top_k,
-        exclude=[c["chunk_index"] for c in chunks],
-    )
+    # 1. Hybrid search: chunks closest in meaning + chunks with the exact codes.
+    chunks, hint = search(request.document_id, request.question)
 
     # 2. Ask the LLM to answer from those chunks only, with page citations.
     try:
-        result = answer_question(request.question, chunks, expansion["hint"])
+        result = answer_question(request.question, chunks, hint)
     except LLMUnavailableError as error:
         raise HTTPException(status_code=503, detail=error.message)
 

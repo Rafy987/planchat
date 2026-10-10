@@ -1,0 +1,109 @@
+"""Two made-up construction documents for the evaluation (no real projects).
+
+They are built as PDFs at run time, so the repo holds no binary files and we know
+exactly what is on every page. Page numbers here are what questions.json expects.
+"""
+
+from pathlib import Path
+
+import pymupdf
+
+CLINIC_PLANS = [
+    # p. 1
+    "SAMPLE CLINIC TENANT IMPROVEMENT\nSHEET G-001 COVER SHEET\n"
+    "SHEET INDEX: A-101 FLOOR PLAN, A-601 FINISH SCHEDULE, A-602 FINISH LEGEND\n"
+    "GENERAL NOTES: CONTRACTOR TO VERIFY ALL DIMENSIONS IN FIELD.",
+    # p. 2
+    "SHEET A-101 FLOOR PLAN - LEVEL 1\nKEYNOTES:\n"
+    "1. PROVIDE TRANSITION STRIP AT CHANGE OF FLOOR MATERIAL.\n"
+    "2. ALIGN FLOOR PATTERN WITH DOOR CENTERLINE.\n"
+    "DOOR 101A: HM FRAME, SOLID CORE WOOD DOOR.\nPTAC-1 UNIT AT EXAM 105.",
+    # p. 3
+    "SHEET A-601 ROOM FINISH SCHEDULE\n"
+    "ROOM  NAME          FLOOR   BASE   WALLS   CEILING\n"
+    "101   WAITING       CPT-1   RB-1   PNT-1   ACT-1\n"
+    "102   RECEPTION     LVP-1   RB-1   PNT-1   ACT-1\n"
+    "103   CORRIDOR      LVP-1   RB-1   PNT-2   ACT-1\n"
+    "104   EXAM 1        SV-1    RB-2   PNT-1   ACT-2\n"
+    "105   EXAM 2        SV-1    RB-2   PNT-1   ACT-2\n"
+    "106   TOILET        PT-1    PT-1B  CT-2    GYP\n"
+    "107   STAFF LOUNGE  LVP-1   RB-1   PNT-2   ACT-1\n"
+    "108   STORAGE       VCT-1   RB-1   PNT-1   EXPOSED\n"
+    "109   MECH          SC-1    NONE   PNT-3   EXPOSED",
+    # p. 4
+    "SHEET A-602 FINISH LEGEND\n"
+    "CPT-1  CARPET TILE: INTERFACE, 'HUMAN NATURE HN850', 25CM X 1M, COLOR SAND\n"
+    "LVP-1  LUXURY VINYL PLANK: TARKETT, 'CONTOUR', 7\" X 48\", COLOR WEATHERED OAK\n"
+    "SV-1   SHEET VINYL: ARMSTRONG, 'MEDINTONE', HEAT WELDED SEAMS, COLOR SLATE\n"
+    "VCT-1  VINYL COMPOSITION TILE: ARMSTRONG, 'STANDARD EXCELON', 12\"X12\", COLOR COOL WHITE\n"
+    "PT-1   PORCELAIN TILE: DALTILE, 'VOLUME 1.0', 12\"X24\", COLOR GRAY\n"
+    "PT-1B  PORCELAIN TILE BASE: DALTILE, 6\" COVE TO MATCH PT-1\n"
+    "RB-1   RUBBER BASE: JOHNSONITE, 4\" COVE, COLOR BLACK\n"
+    "RB-2   RUBBER BASE: JOHNSONITE, 6\" INTEGRAL COVE, COLOR GREY\n"
+    "SC-1   SEALED CONCRETE: CLEAR PENETRATING SEALER\n"
+    "PNT-1  PAINT: SHERWIN WILLIAMS SW 7006 EXTRA WHITE\n"
+    "ACT-1  ACOUSTICAL CEILING TILE: ARMSTRONG 'ULTIMA' 24X24",
+    # p. 5
+    "SECTION 09 65 19 - RESILIENT TILE FLOORING\n"
+    "1.1 SUBMITTALS: PRODUCT DATA AND SAMPLES FOR LVP-1 AND VCT-1.\n"
+    "1.2 WARRANTY: MANUFACTURER'S 10 YEAR LIMITED WARRANTY.\n"
+    "2.1 INSTALL OVER PREPARED SUBSTRATE WITH MANUFACTURER'S ADHESIVE. MOISTURE TEST REQUIRED.",
+    # p. 6
+    "SECTION 22 14 26 - FACILITY STORM DRAINAGE\n"
+    "ROOF DRAINS: CAST IRON BODY, DOME STRAINER, 4 INCH OUTLET.\n"
+    "SECTION 23 81 19 - PTAC UNITS\nPTAC-1: 9,000 BTUH COOLING.",
+]
+
+LIBRARY_SPECS = [
+    # p. 1
+    "PROJECT MANUAL - SAMPLE LIBRARY RENOVATION\nTABLE OF CONTENTS\n"
+    "08 71 00 DOOR HARDWARE\n09 30 13 CERAMIC TILING\n"
+    "09 65 19 RESILIENT TILE FLOORING\n09 68 13 TILE CARPETING",
+    # p. 2
+    "SECTION 09 65 19 - RESILIENT TILE FLOORING\n"
+    "2.1 PRODUCTS\nLVT-1: SHAW CONTRACT, 'TERRA', 18 X 18 IN, COLOR CLAY.\n"
+    "VCT-1: MANNINGTON, 'ESSENTIALS', 12 X 12 IN, COLOR PEBBLE.\n"
+    "1.4 WARRANTY: 15 YEAR MANUFACTURER'S WARRANTY.\n"
+    "3.1 MOISTURE TESTING PER ASTM F1869; MAXIMUM 5 LBS PER 1000 SF IN 24 HOURS.",
+    # p. 3
+    "SECTION 09 68 13 - TILE CARPETING\n"
+    "2.1 PRODUCTS\nCPT-1: MOHAWK GROUP, 'LASTING MARK', 24 X 24 IN, COLOR GRAPHITE.\n"
+    "CPT-2: INTERFACE, 'OPEN AIR 410' WALK-OFF CARPET TILE, COLOR CHARCOAL.\n"
+    "1.5 EXTRA MATERIALS: 3 PERCENT ATTIC STOCK OF EACH CARPET TILE.",
+    # p. 4
+    "SECTION 09 30 13 - CERAMIC TILING\n"
+    "2.1 PRODUCTS\nPT-1: CROSSVILLE, 'RETRO ACTIVE', PORCELAIN TILE, 12 X 24 IN.\n"
+    "2.2 GROUT: LATICRETE SPECTRALOCK PRO EPOXY GROUT.\n"
+    "2.3 SETTING MATERIAL: ANSI A118.4 LATEX-PORTLAND CEMENT MORTAR.",
+    # p. 5
+    "SECTION 08 71 00 - DOOR HARDWARE\n"
+    "HINGES: IVES 5BB1, 4-1/2 X 4-1/2.\nLOCKSETS: SCHLAGE ND SERIES, RHODES LEVER.\n"
+    "CLOSERS: LCN 4040XP, SURFACE MOUNTED.",
+    # p. 6
+    "ROOM FINISH SCHEDULE - LIBRARY\n"
+    "100  LOBBY             PT-1\n101  READING ROOM      CPT-1\n"
+    "102  CHILDREN'S AREA   LVT-1\n103  WORKROOM          VCT-1\n"
+    "104  ENTRY VESTIBULE   CPT-2\n105  RESTROOMS         PT-1",
+]
+
+SAMPLES = {"clinic": ("sample_clinic_plans.pdf", CLINIC_PLANS), "library": ("sample_library_specs.pdf", LIBRARY_SPECS)}
+
+
+def build_pdf(pages: list[str]) -> bytes:
+    doc = pymupdf.open()
+    for text in pages:
+        doc.new_page().insert_text((36, 60), text, fontsize=8)
+    pdf_bytes = doc.tobytes()
+    doc.close()
+    return pdf_bytes
+
+
+def write_samples(folder: Path) -> list[Path]:
+    """Save the sample PDFs (handy to open and look at)."""
+    folder.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for filename, pages in SAMPLES.values():
+        path = folder / filename
+        path.write_bytes(build_pdf(pages))
+        paths.append(path)
+    return paths

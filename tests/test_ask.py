@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-import app.main
+import app.search
 from app import answer
 from app.db import save_document
 from app.embeddings import EMBEDDING_DIM
@@ -74,10 +74,10 @@ def test_never_returns_chunks_from_another_document(plans, created_documents):
 @pytest.fixture
 def fake_llm(monkeypatch):
     """Question embeds to direction 1 (the Room 204 chunk); LLM reply is set per test."""
-    monkeypatch.setattr(app.main, "embed_texts", lambda texts: [direction(1)])
+    monkeypatch.setattr(app.search, "embed_texts", lambda texts: [direction(1)])
     replies = {}
 
-    def fake_complete(system, user):
+    def fake_complete(system, user, **kwargs):
         replies["prompt"] = user
         if isinstance(replies["text"], Exception):
             raise replies["text"]

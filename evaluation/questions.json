@@ -1,0 +1,45 @@
+{
+  "_how_scoring_works": "must_include: every term must be in the answer. must_not_include: none may be. pages: at least one must be cited. not_in_document: the answer must say it couldn't find it and cite nothing.",
+  "questions": [
+    {"id": 1, "doc": "clinic", "type": "fact", "question": "What flooring is in Exam 1?", "must_include": ["SV-1"], "pages": [3]},
+    {"id": 2, "doc": "clinic", "type": "fact", "question": "What is the floor finish in the waiting room?", "must_include": ["CPT-1"], "pages": [3]},
+    {"id": 3, "doc": "clinic", "type": "fact", "question": "What base is used in the toilet room?", "must_include": ["PT-1B"], "pages": [3]},
+    {"id": 4, "doc": "clinic", "type": "fact", "question": "What is the ceiling in the storage room?", "must_include": ["exposed"], "pages": [3]},
+    {"id": 5, "doc": "clinic", "type": "product", "question": "Who manufactures LVP-1?", "must_include": ["Tarkett"], "pages": [4]},
+    {"id": 6, "doc": "clinic", "type": "product", "question": "What color is the sheet vinyl SV-1?", "must_include": ["slate"], "pages": [4]},
+    {"id": 7, "doc": "clinic", "type": "fact", "question": "How long is the warranty for the resilient flooring?", "must_include": ["10"], "pages": [5]},
+    {"id": 8, "doc": "clinic", "type": "list", "question": "Which rooms have resilient flooring?", "must_include": ["102", "103", "104", "105", "107", "108"], "must_not_include": ["101", "106", "109"], "pages": [3]},
+    {"id": 9, "doc": "clinic", "type": "list", "question": "Which rooms use RB-2 base?", "must_include": ["104", "105"], "must_not_include": ["101", "102", "103", "107", "108"], "pages": [3]},
+    {"id": 10, "doc": "clinic", "type": "list", "question": "Which rooms have luxury vinyl plank?", "must_include": ["102", "103", "107"], "must_not_include": ["104", "105", "108"], "pages": [3]},
+    {"id": 11, "doc": "clinic", "type": "fact", "question": "What is the outlet size of the roof drains?", "must_include": ["4"], "pages": [6]},
+    {"id": 12, "doc": "clinic", "type": "not_in_document", "question": "What is the fire rating of the corridor walls?", "not_in_document": true},
+    {"id": 13, "doc": "library", "type": "fact", "question": "What flooring is in the reading room?", "must_include": ["CPT-1"], "pages": [6]},
+    {"id": 14, "doc": "library", "type": "product", "question": "Who makes CPT-1?", "must_include": ["Mohawk"], "pages": [3]},
+    {"id": 15, "doc": "library", "type": "product", "question": "What grout is specified for the porcelain tile?", "must_include": ["Laticrete"], "pages": [4]},
+    {"id": 16, "doc": "library", "type": "fact", "question": "What is the warranty on the resilient tile flooring?", "must_include": ["15"], "pages": [2]},
+    {"id": 17, "doc": "library", "type": "product", "question": "What door closers are specified?", "must_include": ["4040XP"], "pages": [5]},
+    {"id": 18, "doc": "library", "type": "list", "question": "Which rooms have carpet?", "must_include": ["101", "104"], "must_not_include": ["100", "102", "103", "105"], "pages": [6]},
+    {"id": 19, "doc": "library", "type": "not_in_document", "question": "What roof membrane is specified?", "not_in_document": true},
+    {"id": 20, "doc": "library", "type": "not_in_document", "question": "Which brand of toilet partitions is specified?", "not_in_document": true}
+  ],
+  "flooring_schedules": {
+    "clinic": {
+      "LVP-1": {"category": "resilient", "rooms": ["102", "103", "107"]},
+      "SV-1": {"category": "resilient", "rooms": ["104", "105"]},
+      "VCT-1": {"category": "resilient", "rooms": ["108"]},
+      "CPT-1": {"category": "carpet", "rooms": ["101"]},
+      "PT-1": {"category": "tile", "rooms": ["106"]},
+      "PT-1B": {"category": "tile", "rooms": ["106"]},
+      "SC-1": {"category": "concrete/coating", "rooms": ["109"]},
+      "RB-1": {"category": "base", "rooms": ["101", "102", "103", "107", "108"]},
+      "RB-2": {"category": "base", "rooms": ["104", "105"]}
+    },
+    "library": {
+      "LVT-1": {"category": "resilient", "rooms": ["102"]},
+      "VCT-1": {"category": "resilient", "rooms": ["103"]},
+      "CPT-1": {"category": "carpet", "rooms": ["101"]},
+      "CPT-2": {"category": "carpet", "rooms": ["104"]},
+      "PT-1": {"category": "tile", "rooms": ["100", "105"]}
+    }
+  }
+}

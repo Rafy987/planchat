@@ -46,13 +46,20 @@ def check_citations(answer: str, chunks: list[dict]) -> tuple[str, list[dict]]:
     return answer, sources
 
 
-def answer_question(question: str, chunks: list[dict], hint: str | None = None) -> dict:
-    """Ask the LLM using the retrieved chunks. Returns answer, sources, provider, model."""
+def answer_question(
+    question: str, chunks: list[dict], hint: str | None = None, max_wait_seconds: float = 0
+) -> dict:
+    """Ask the LLM using the retrieved chunks. Returns answer, sources, provider, model.
+
+    max_wait_seconds: 0 for chat (fail fast); the evaluation waits out rate limits.
+    """
     if not chunks:
         # No text in this document (e.g. scanned pages): don't spend tokens on it.
         return {"answer": NOT_FOUND_ANSWER, "sources": [], "provider": None, "model": None}
 
-    result = llm.complete(SYSTEM_PROMPT, build_user_prompt(question, chunks, hint))
+    result = llm.complete(
+        SYSTEM_PROMPT, build_user_prompt(question, chunks, hint), max_wait_seconds=max_wait_seconds
+    )
     answer, sources = check_citations(result["text"], chunks)
     return {
         "answer": answer,
