@@ -125,8 +125,12 @@ def test_nothing_saved_if_database_save_fails(created_documents, db, test_setup,
 
     monkeypatch.setattr(app.main, "embed_texts", broken_embedder)
 
-    with pytest.raises(Exception, match="dimensions"):
-        upload(make_pdf(SAMPLE_PAGES), filename="should-not-exist.pdf")
+    response = upload(make_pdf(SAMPLE_PAGES), filename="should-not-exist.pdf")
+
+    # The user gets a friendly 500 with an error ID, not a crash or internals.
+    assert response.status_code == 500
+    assert "Something went wrong" in response.json()["detail"]
+    assert "dimensions" not in response.text
 
     # The transaction was rolled back: no document row, and no file on disk.
     count = db.execute(

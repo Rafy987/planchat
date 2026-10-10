@@ -163,6 +163,13 @@ def extract_flooring(chunks: list[dict]) -> dict:
     """
     candidates = [c for c in chunks if mentions_flooring(c["text"])]
     items, warnings = [], []
+    # Cap the AI work per run, so one huge plan set can't use the whole day's budget.
+    if len(candidates) > settings.flooring_max_chunks:
+        last_page = candidates[settings.flooring_max_chunks - 1]["page_number"]
+        warnings.append(
+            f"This document has a lot of flooring text; only pages up to {last_page} were scanned."
+        )
+        candidates = candidates[: settings.flooring_max_chunks]
     for batch in make_batches(candidates, settings.flooring_batch_tokens):
         items += _extract_batch(batch, warnings)
     return {"items": merge_items(items), "warnings": warnings}

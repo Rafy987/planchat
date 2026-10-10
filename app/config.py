@@ -52,6 +52,22 @@ class Settings(BaseSettings):
     flooring_batch_tokens: int = 1500
     flooring_max_output_tokens: int = 900
     flooring_max_wait_seconds: float = 60  # wait this long at most if rate-limited
+    # At most this many chunks are sent to the AI per extraction (protects the budget).
+    flooring_max_chunks: int = 150
+
+    # Biggest PDF we accept, in pages (protects a small 512 MB server).
+    max_pages: int = 300
+
+    # Rate limits per visitor IP, for the endpoints that cost AI calls or CPU.
+    ask_limit_per_minute: int = 10
+    ask_limit_per_day: int = 100
+    flooring_limit_per_hour: int = 3
+    upload_limit_per_hour: int = 5
+    # LLM calls per day for the WHOLE app (Groq's free tier allows ~1,000).
+    daily_llm_budget: int = 500
+    # How many proxies sit in front of the app and add to X-Forwarded-For.
+    # 0 locally (use the direct connection); 1 on Render. See rate_limit.client_ip.
+    trusted_proxy_hops: int = 0
 
 
 settings = Settings()

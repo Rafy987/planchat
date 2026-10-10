@@ -6,12 +6,15 @@ import openai
 from openai import OpenAI
 
 from app.config import settings
+from app.rate_limit import spend_llm_call
 
 # Groq offers an OpenAI-compatible API, so one library (openai) talks to both.
 # Only the base URL, key and model differ.
 BASE_URLS = {"groq": "https://api.groq.com/openai/v1", "openai": None}
 
 logger = logging.getLogger(__name__)
+
+BUDGET_USED_UP = "PlanChat has reached today's AI limit. Please try again tomorrow."
 
 
 class LLMUnavailableError(Exception):
@@ -103,6 +106,9 @@ def complete(
         )
         waited = 0.0
         while True:
+            # Every real AI call counts against the app-wide daily budget.
+            if not spend_llm_call():
+                raise LLMUnavailableError(BUDGET_USED_UP)
             try:
                 response = client.chat.completions.create(
                     model=_model(provider),

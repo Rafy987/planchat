@@ -1,12 +1,16 @@
 import csv
 import io
+import logging
 import re
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Response, UploadFile
+import psycopg
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from psycopg_pool import PoolTimeout
 
 from app.answer import answer_question
 from app.chunking import chunk_pages
@@ -15,7 +19,8 @@ from app.db import close_pool, init_db, load_flooring, save_document, save_floor
 from app.embeddings import embed_texts, get_model
 from app.extractor import extract_flooring
 from app.llm import LLMUnavailableError
-from app.pdf_utils import InvalidPDFError, extract_pages
+from app.pdf_utils import InvalidPDFError, TooManyPagesError, extract_pages
+from app.rate_limit import rate_limit
 from app.retrieval import document_exists, get_all_chunks, get_document
 from app.schemas import (
     AskRequest,
@@ -37,7 +42,37 @@ async def lifespan(app: FastAPI):
     close_pool()
 
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+
+
+# Catches any error the endpoints didn't handle, so users get a friendly message
+# instead of a crash, while the full error goes to the server log. Defined BEFORE
+# the CORS middleware so CORS wraps it: otherwise the browser would hide the
+# message and only show "can't reach the server".
+@app.middleware("http")
+async def handle_unexpected_errors(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except (psycopg.OperationalError, PoolTimeout):
+        logger.exception("Database unavailable on %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "The database is temporarily unavailable. Please try again in a minute."},
+        )
+    except Exception:
+        # A short ID shown to the user and written in the log, to find this exact error.
+        error_id = uuid.uuid4().hex[:8]
+        logger.exception("Error %s on %s %s", error_id, request.method, request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": f"Something went wrong on our side. Please try again. (error ID {error_id})",
+                "error_id": error_id,
+            },
+        )
+
 
 # CORS: browsers block a page on one site (e.g. localhost:3000, the frontend) from
 # calling an API on another (localhost:8000) unless the API says that site is allowed.
@@ -62,7 +97,11 @@ def health():
 
 # A normal `def` (not `async def`): PDF parsing and embedding are slow CPU work, and
 # FastAPI runs `def` endpoints in a thread pool so one big upload doesn't freeze the server.
-@app.post("/documents", response_model=DocumentUploadResponse)
+@app.post(
+    "/documents",
+    response_model=DocumentUploadResponse,
+    dependencies=[Depends(rate_limit("upload"))],
+)
 def upload_document(file: UploadFile):
     max_bytes = settings.max_upload_mb * 1024 * 1024
     # Read one byte past the limit, so we know if the file is too big
@@ -80,9 +119,14 @@ def upload_document(file: UploadFile):
         raise HTTPException(status_code=400, detail="File is not a PDF")
 
     try:
-        pages = extract_pages(pdf_bytes)
+        pages = extract_pages(pdf_bytes, max_pages=settings.max_pages)
     except InvalidPDFError:
         raise HTTPException(status_code=400, detail="PDF is damaged or unreadable")
+    except TooManyPagesError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=f"PDF has {error.page_count} pages; the limit is {settings.max_pages}.",
+        )
 
     chunks = chunk_pages(pages, settings.chunk_size, settings.chunk_overlap)
     embeddings = embed_texts([c["text"] for c in chunks])
@@ -114,7 +158,7 @@ def read_document(document_id: uuid.UUID):
     return document
 
 
-@app.post("/ask", response_model=AskResponse)
+@app.post("/ask", response_model=AskResponse, dependencies=[Depends(rate_limit("ask"))])
 def ask(request: AskRequest):
     if not document_exists(request.document_id):
         raise HTTPException(status_code=404, detail="Document not found")
@@ -139,7 +183,11 @@ def _require_document(document_id: uuid.UUID) -> dict:
 
 
 # POST because it does work (LLM calls) and may take a minute or two on big plan sets.
-@app.post("/documents/{document_id}/flooring", response_model=FlooringSchedule)
+@app.post(
+    "/documents/{document_id}/flooring",
+    response_model=FlooringSchedule,
+    dependencies=[Depends(rate_limit("flooring"))],
+)
 def extract_flooring_schedule(document_id: uuid.UUID):
     _require_document(document_id)
     try:

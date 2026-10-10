@@ -2,7 +2,7 @@
 
 AI assistant for construction plan sets and spec books (PDFs). Ask questions, get answers with page citations.
 
-> Work in progress — currently Phase 7 (flooring schedule extractor + CSV).
+> Work in progress — currently Phase 9 (rate limiting + error handling).
 
 ## Tech (so far)
 - Python 3.13, FastAPI, Uvicorn
@@ -159,6 +159,25 @@ The text is split into small pieces (**chunks**) so that later only the few piec
   - an **HNSW index** on `embedding` for fast similarity search
 - A document and all its chunks are saved in **one transaction**: either everything is saved or nothing is.
 - A **connection pool** reuses open database connections. Opening a new one to Neon takes seconds; reusing one is near-instant.
+
+## Rate limits and error handling
+
+So strangers can't use up the Groq free tier once the app is public. (CORS doesn't help here: it only applies to browsers, and scripts ignore it.)
+
+| What | Limit | Setting |
+|---|---|---|
+| Questions (`POST /ask`) | 10 per minute and 100 per day, per visitor IP | `ASK_LIMIT_PER_MINUTE`, `ASK_LIMIT_PER_DAY` |
+| Flooring extraction | 3 per hour per IP | `FLOORING_LIMIT_PER_HOUR` |
+| Uploads | 5 per hour per IP | `UPLOAD_LIMIT_PER_HOUR` |
+| **All AI calls, whole app** | **500 per day** (Groq free tier ≈ 1,000) | `DAILY_LLM_BUDGET` |
+| PDF size | 50 MB and 300 pages | `MAX_UPLOAD_MB`, `MAX_PAGES` |
+| Flooring extraction size | at most 150 chunks sent to the AI per run (with a warning) | `FLOORING_MAX_CHUNKS` |
+
+- Over a limit: `429` with a friendly message ("Please wait 40 seconds") and a `Retry-After` header. Daily AI budget used up: `503` "try again tomorrow". Search and saved schedules keep working.
+- **Sliding window, written by hand** ([app/rate_limit.py](app/rate_limit.py), about 40 lines): each IP keeps the times of its recent requests, and old ones drop off. Counters are in memory, which is fine for one small server. With several servers they'd go in a shared store like Redis.
+- **The daily budget is the real protection:** one person can use many IPs, but all AI calls together can't exceed 500 a day.
+- **Real visitor IP behind a proxy:** on Render, set `TRUSTED_PROXY_HOPS=1`. The app then reads the **last** entry of `X-Forwarded-For` (added by Render's proxy). The first entries can be faked by the visitor, which is why uvicorn's `--forwarded-allow-ips="*"` is *not* used: it trusts the first entry, so a script could fake a new IP on every request.
+- **Errors:** any unexpected error returns `500` "Something went wrong… (error ID ab12cd34)" and the full error is logged under the same ID; users never see internals. Database down returns `503`. The error handler sits inside CORS, so the browser can show the message.
 
 ## Accuracy
 

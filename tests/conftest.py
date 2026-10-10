@@ -1,7 +1,16 @@
 import pytest
 
+from app import rate_limit
 from app.config import settings
 from app.db import close_pool, get_connection, init_db
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limits():
+    """Every test starts with empty rate-limit counters and a fresh daily budget."""
+    rate_limit.reset()
+    yield
+    rate_limit.reset()
 
 
 @pytest.fixture(scope="session")
