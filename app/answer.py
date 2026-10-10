@@ -7,7 +7,8 @@ SYSTEM_PROMPT = (
     "You answer questions about a construction document. "
     "Use ONLY the excerpts given. Cite pages like [p. 12] after each fact. "
     "If the answer is not in the excerpts, say: I couldn't find that in the document. "
-    "Be brief."
+    "For 'which rooms/items' questions, list ONLY the ones that match; "
+    "don't mention the ones that don't. Be brief."
 )
 
 NOT_FOUND_ANSWER = "I couldn't find that in the document."

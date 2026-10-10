@@ -19,7 +19,8 @@ SYSTEM_PROMPT = (
     'plank, Natural Wood, Oak","manufacturer":"Mohawk","rooms":["205 Break Room"],'
     '"pages":[2,4]}]}. One item per product code. rooms = rooms that use it. '
     'pages = the [p. N] where you saw it. Use "" or [] if unknown. '
-    "Use ONLY the excerpts. No paint, ceilings or walls."
+    "Include sealed or polished concrete, epoxy and other floor coatings too, "
+    "even with no manufacturer. Use ONLY the excerpts. No paint, ceilings or walls."
 )
 
 CATEGORY_ORDER = ["resilient", "carpet", "tile", "wood", "concrete/coating", "base", "other"]

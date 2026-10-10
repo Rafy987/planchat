@@ -44,3 +44,9 @@ def test_no_chunks_means_no_llm_call(monkeypatch):
 
     assert result["answer"] == answer.NOT_FOUND_ANSWER
     assert result["provider"] is None
+
+
+def test_prompt_asks_for_only_matching_items_in_lists():
+    # Evaluation Q8: the answer listed the right rooms, then named the wrong ones
+    # in a note ("101 is carpet, not resilient"), which is noise for the user.
+    assert "list ONLY the ones that match" in answer.SYSTEM_PROMPT

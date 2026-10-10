@@ -194,3 +194,9 @@ def test_single_chunk_with_bad_json_twice_is_skipped_with_a_warning(fake_llm, mo
 def test_output_limit_stays_under_groq_free_tier():
     # Groq refuses any request asking for more than 1,000 output tokens per minute.
     assert settings.flooring_max_output_tokens < 1000
+
+
+def test_prompt_includes_concrete_and_coatings():
+    # Evaluation: SC-1 (sealed concrete, no manufacturer) was sometimes skipped.
+    assert "sealed or polished concrete" in extractor.SYSTEM_PROMPT
+    assert "even with no manufacturer" in extractor.SYSTEM_PROMPT

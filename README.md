@@ -169,17 +169,35 @@ _Last run: 2026-10-10, 20 questions on 2 made-up sample documents. Details per q
 
 | | Hybrid search (used by the app) | Vector search only |
 |---|---|---|
-| Answer correct | **95% (19/20)** | 95% (19/20) |
+| Answer correct | **100% (20/20)** | 90% (18/20) |
 | Cites the right page | **100% (20/20)** | 100% (20/20) |
 | Right page found by search | **100% (17/17)** | 100% (17/17) |
 
 | Flooring schedule extractor | Score |
 |---|---|
-| Product codes found | **93% (13/14)** |
-| Correct category (of found) | 100% (13/13) |
-| Exactly the right rooms (of found) | 100% (13/13) |
+| Product codes found | **100% (14/14)** |
+| Correct category (of found) | 100% (14/14) |
+| Exactly the right rooms (of found) | 100% (14/14) |
 | Extra codes that shouldn't be there | 0  |
 <!-- EVAL:END -->
+
+#### Before vs after two fixes (2026-10-10)
+
+The first run found two problems, which were fixed in the **app** (the scoring rules were not changed):
+
+1. **List answers:** for "Which rooms have resilient flooring?" the answer named the 6 right rooms, then added a note naming the non-matching rooms ("101 is carpet, not resilient"). That's noise for the user, and the strict scoring rule counted it as wrong. **Fix:** the prompt now says to list only the items that match.
+2. **Extractor missed SC-1 (sealed concrete):** it has no manufacturer, so the AI skipped it. **Fix:** the extractor prompt now says to include concrete and floor coatings even without a manufacturer.
+
+| | Before fixes | After fixes |
+|---|---|---|
+| Answer correct, hybrid search (used by the app) | 95% (19/20) | **100% (20/20)** |
+| Answer correct, vector search only | 95% (19/20) | 90% (18/20) |
+| Cites the right page (both modes) | 100% (20/20) | 100% (20/20) |
+| Flooring extractor: product codes found | 93% (13/14) | **100% (14/14)** |
+
+- **Hybrid vs vector:** both runs fail vector-only on "Which rooms have resilient flooring?". Without the glossary, the AI doesn't count sheet vinyl (SV-1) as resilient and misses rooms 104 and 105. Hybrid search gets it right.
+- **Vector-only Q10 newly failed after the fixes:** search found the right page, but the AI listed rooms 102 and 107 and missed 103. Before the fixes, the same question passed. One run can't tell whether the prompt change or normal AI variation caused it, so treat ±1 question as noise.
+- Full per-question results: [before fixes](evaluation/results-before-fixes.md) · [after fixes](evaluation/results.md).
 
 **Limits:** 20 questions on documents I wrote is a small test. It shows the system works and catches regressions, but it doesn't prove accuracy on every real plan set. LLM answers can vary slightly between runs.
 
