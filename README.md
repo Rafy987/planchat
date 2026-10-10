@@ -2,7 +2,7 @@
 
 AI assistant for construction plan sets and spec books (PDFs). Ask questions, get answers with page citations.
 
-> Work in progress — currently Phase 6 (web frontend).
+> Work in progress — currently Phase 7 (flooring schedule extractor + CSV).
 
 ## Tech (so far)
 - Python 3.13, FastAPI, Uvicorn
@@ -58,6 +58,9 @@ Open http://localhost:3000, upload a PDF, then ask questions. Tap a **p. N** but
 | GET    | `/health` | `{"status": "ok"}`                      |
 | POST   | `/documents` | Upload a PDF; extracts, chunks, embeds and stores it |
 | GET    | `/documents/{id}` | File name and page count of one document |
+| POST   | `/documents/{id}/flooring` | Extract the flooring schedule with AI and save it (can take a minute) |
+| GET    | `/documents/{id}/flooring` | The saved flooring schedule (no AI call) |
+| GET    | `/documents/{id}/flooring.csv` | Download the schedule as a CSV file (opens in Excel) |
 | POST   | `/ask` | Ask a question about one document; answer with page citations |
 
 ### Upload a PDF
@@ -108,6 +111,33 @@ Room 201 Lobby: ..."}],
 Settings: `LLM_PROVIDER` (`groq` or `openai`), `GROQ_API_KEY`, `OPENAI_API_KEY`, `GROQ_MODEL`, `OPENAI_MODEL`, `TOP_K`. Keys are stored as `SecretStr`, so they never show up if settings are printed.
 
 **Why `qwen/qwen3.8-27b`:** Groq no longer serves LLaMA chat models. In a side-by-side test, Qwen answered correctly with citations, while `gpt-oss-20b` missed facts on a second page and used special Unicode hyphens (`CPT‑1`) that would break later matching.
+
+### Flooring schedule
+
+On the chat page, tap **Flooring** → **Extract flooring schedule**. You get one row per product code:
+
+| code | category | product | manufacturer | rooms | pages |
+|---|---|---|---|---|---|
+| LVP-1 | resilient | Luxury vinyl plank, Tarkett 'Contour', Weathered Oak | Tarkett | 102 Reception; 103 Corridor; 107 Staff Lounge | 3; 4; 5 |
+| RB-2 | base | Rubber base, 6" integral cove, Grey | Johnsonite | 104 Exam 1; 105 Exam 2 | 3; 4 |
+
+How it works:
+
+1. **Glossary, no AI ([app/flooring.py](app/flooring.py)):** knows plan abbreviations. LVT, LVP, VCT, SV (sheet vinyl), rubber and linoleum are **resilient**; CPT is **carpet**; PT/QT are **tile**; RB is **base**, and so on. Short codes only count with a number (`RB-1`, not "RB"), and `PTAC-1` is not porcelain tile. It picks out only the chunks that mention flooring, so the AI never reads unrelated pages.
+2. **AI in small batches:** those chunks go to the LLM in batches of about 1,500 tokens, and it replies in **JSON**. Groq's free tier allows only about 1,000 *output* tokens per minute, so answers are capped at 900 tokens. If an answer is cut off, the batch is split in half and retried. On a rate limit it waits (as long as Groq asks, else 10 s, up to 60 s) instead of failing.
+3. **Anti-hallucination check:** an item is kept only if its code (or manufacturer) really appears on the pages it cites. Wrong page numbers are corrected.
+4. **Merge:** the same code from different pages becomes one row (rooms from the finish schedule plus the manufacturer from the legend). The category comes from the glossary, not the AI.
+5. Saved in the `flooring_items` table, so viewing it again or downloading the CSV costs nothing.
+
+**Limitation:** drawings often have finish schedules as graphic tables, and PDF text extraction can scramble rows and columns. The AI can also miss an item on one run (run **Extract again**). Phase 8 will measure accuracy.
+
+### Hybrid search (why "resilient flooring" now works)
+
+Vector search alone missed questions like "Which rooms have resilient flooring?", because plans say "LVP-1", and the embedding model doesn't know that LVP is resilient. Now `/ask`:
+
+- **Expands** flooring words in the question with the codes plans use (resilient → LVT, LVP, VCT, sheet vinyl…) for the search.
+- **Adds keyword search:** up to 3 extra chunks that contain those exact codes (`KEYWORD_TOP_K`), next to the 5 closest by meaning.
+- **Adds a one-line glossary** to the prompt, only for such questions, clearly marked as *not from the document*: "Resilient flooring = LVT, LVP, VCT…; other floor types are NOT resilient." Without the "NOT" part, the model also called carpet resilient.
 
 ### How chunking works
 

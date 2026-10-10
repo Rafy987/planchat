@@ -30,6 +30,22 @@ CREATE TABLE IF NOT EXISTS chunks (
 -- HNSW index: makes "find the most similar chunks" fast even with many chunks.
 CREATE INDEX IF NOT EXISTS chunks_embedding_idx
     ON chunks USING hnsw (embedding vector_cosine_ops);
+
+-- When the flooring schedule was last extracted (NULL = never).
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS flooring_extracted_at timestamptz;
+
+CREATE TABLE IF NOT EXISTS flooring_items (
+    id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    document_id   uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    position      integer NOT NULL,  -- keeps the schedule's row order
+    code          text NOT NULL,
+    category      text NOT NULL,
+    product       text NOT NULL,
+    manufacturer  text NOT NULL,
+    rooms         text[] NOT NULL,
+    pages         integer[] NOT NULL
+);
+CREATE INDEX IF NOT EXISTS flooring_items_document_idx ON flooring_items (document_id);
 """
 
 
@@ -101,3 +117,38 @@ def save_document(
                     for c, emb in zip(chunks, embeddings)
                 ],
             )
+
+
+def save_flooring(document_id: uuid.UUID, items: list[dict]) -> None:
+    """Replace a document's flooring schedule (one transaction: all or nothing)."""
+    with get_connection() as conn, conn.transaction():
+        conn.execute("DELETE FROM flooring_items WHERE document_id = %s", (document_id,))
+        with conn.cursor() as cur:
+            cur.executemany(
+                """INSERT INTO flooring_items
+                   (document_id, position, code, category, product, manufacturer, rooms, pages)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                [
+                    (document_id, i, it["code"], it["category"], it["product"],
+                     it["manufacturer"], it["rooms"], it["pages"])
+                    for i, it in enumerate(items)
+                ],
+            )
+        conn.execute(
+            "UPDATE documents SET flooring_extracted_at = now() WHERE id = %s", (document_id,)
+        )
+
+
+def load_flooring(document_id: uuid.UUID) -> tuple:
+    """Return (extracted_at or None, items) for a document."""
+    with get_connection() as conn:
+        extracted_at = conn.execute(
+            "SELECT flooring_extracted_at FROM documents WHERE id = %s", (document_id,)
+        ).fetchone()[0]
+        rows = conn.execute(
+            """SELECT code, category, product, manufacturer, rooms, pages
+               FROM flooring_items WHERE document_id = %s ORDER BY position""",
+            (document_id,),
+        ).fetchall()
+    keys = ["code", "category", "product", "manufacturer", "rooms", "pages"]
+    return extracted_at, [dict(zip(keys, row)) for row in rows]

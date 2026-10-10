@@ -42,5 +42,16 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 300  # caps answer length (and cost)
     llm_timeout_seconds: float = 30
 
+    # Hybrid search: up to this many extra chunks found by exact keywords/codes.
+    keyword_top_k: int = 3
+
+    # Flooring extractor. Groq's free tier allows ~8,000 input tokens and only 1,000
+    # OUTPUT tokens per minute, and a request asking for more output than that is
+    # always refused. So each request sends ~1,500 tokens of text (small enough for
+    # its JSON answer to fit) and may answer with up to 900 tokens.
+    flooring_batch_tokens: int = 1500
+    flooring_max_output_tokens: int = 900
+    flooring_max_wait_seconds: float = 60  # wait this long at most if rate-limited
+
 
 settings = Settings()

@@ -1,18 +1,36 @@
+import csv
+import io
+import re
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.answer import answer_question
 from app.chunking import chunk_pages
 from app.config import settings
-from app.db import close_pool, init_db, save_document
+from app.db import close_pool, init_db, load_flooring, save_document, save_flooring
 from app.embeddings import embed_texts, get_model
+from app.extractor import extract_flooring
+from app.flooring import expand_question
 from app.llm import LLMUnavailableError
 from app.pdf_utils import InvalidPDFError, extract_pages
-from app.retrieval import document_exists, find_similar_chunks, get_document
-from app.schemas import AskRequest, AskResponse, DocumentInfo, DocumentUploadResponse
+from app.retrieval import (
+    document_exists,
+    find_chunks_by_keywords,
+    find_similar_chunks,
+    get_all_chunks,
+    get_document,
+)
+from app.schemas import (
+    AskRequest,
+    AskResponse,
+    DocumentInfo,
+    DocumentUploadResponse,
+    FlooringSchedule,
+)
 
 
 @asynccontextmanager
@@ -107,14 +125,91 @@ def ask(request: AskRequest):
     if not document_exists(request.document_id):
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # 1. Find the chunks of this document closest in meaning to the question.
-    question_embedding = embed_texts([request.question])[0]
+    # 1. Hybrid search. Flooring words in the question ("resilient") are expanded
+    #    with the codes plans actually use (LVP, LVT, VCT...).
+    expansion = expand_question(request.question)
+    #    a) chunks closest in MEANING (embedding of the question + related terms)
+    question_embedding = embed_texts([expansion["search_text"]])[0]
     chunks = find_similar_chunks(request.document_id, question_embedding, settings.top_k)
+    #    b) plus chunks containing the exact codes/terms, which embeddings often miss
+    chunks += find_chunks_by_keywords(
+        request.document_id,
+        expansion["keywords"],
+        limit=settings.keyword_top_k,
+        exclude=[c["chunk_index"] for c in chunks],
+    )
 
     # 2. Ask the LLM to answer from those chunks only, with page citations.
     try:
-        result = answer_question(request.question, chunks)
+        result = answer_question(request.question, chunks, expansion["hint"])
     except LLMUnavailableError as error:
         raise HTTPException(status_code=503, detail=error.message)
 
     return AskResponse(**result)
+
+
+def _require_document(document_id: uuid.UUID) -> dict:
+    document = get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return document
+
+
+# POST because it does work (LLM calls) and may take a minute or two on big plan sets.
+@app.post("/documents/{document_id}/flooring", response_model=FlooringSchedule)
+def extract_flooring_schedule(document_id: uuid.UUID):
+    _require_document(document_id)
+    try:
+        result = extract_flooring(get_all_chunks(document_id))
+    except LLMUnavailableError as error:
+        raise HTTPException(status_code=503, detail=error.message)
+    save_flooring(document_id, result["items"])
+    extracted_at, items = load_flooring(document_id)
+    return FlooringSchedule(
+        document_id=str(document_id),
+        extracted_at=extracted_at,
+        items=items,
+        warnings=result["warnings"],
+    )
+
+
+# GET returns the saved schedule: free and instant, no LLM call.
+@app.get("/documents/{document_id}/flooring", response_model=FlooringSchedule)
+def read_flooring_schedule(document_id: uuid.UUID):
+    _require_document(document_id)
+    extracted_at, items = load_flooring(document_id)
+    return FlooringSchedule(document_id=str(document_id), extracted_at=extracted_at, items=items)
+
+
+@app.get("/documents/{document_id}/flooring.csv")
+def download_flooring_csv(document_id: uuid.UUID):
+    document = _require_document(document_id)
+    extracted_at, items = load_flooring(document_id)
+    if extracted_at is None:
+        raise HTTPException(status_code=404, detail="No flooring schedule yet. Extract it first.")
+
+    filename = f"{_safe_filename(Path(document['filename']).stem)}-flooring.csv"
+    return Response(
+        content=flooring_csv(items),
+        media_type="text/csv; charset=utf-8",
+        # "attachment" makes the browser download it as a file with this name.
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _safe_filename(name: str) -> str:
+    """Keep only simple characters so the download header can't be broken."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", name)[:80] or "document"
+
+
+def flooring_csv(items: list[dict]) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)  # handles commas and quotes inside values
+    writer.writerow(["code", "category", "product", "manufacturer", "rooms", "pages"])
+    for item in items:
+        writer.writerow([
+            item["code"], item["category"], item["product"], item["manufacturer"],
+            "; ".join(item["rooms"]), "; ".join(str(p) for p in item["pages"]),
+        ])
+    # The BOM at the start tells Excel the file is UTF-8 (so "é" or "×" show correctly).
+    return "\ufeff" + buffer.getvalue()

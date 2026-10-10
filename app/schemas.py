@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from pydantic import BaseModel, StringConstraints
@@ -17,6 +18,22 @@ class DocumentInfo(BaseModel):
     document_id: str
     filename: str
     page_count: int
+
+
+class FlooringItem(BaseModel):
+    code: str
+    category: str
+    product: str
+    manufacturer: str
+    rooms: list[str]
+    pages: list[int]
+
+
+class FlooringSchedule(BaseModel):
+    document_id: str
+    extracted_at: datetime | None  # None = not extracted yet
+    items: list[FlooringItem]
+    warnings: list[str] = []
 
 
 class AskRequest(BaseModel):

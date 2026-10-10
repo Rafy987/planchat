@@ -11,23 +11,29 @@ from app.config import settings
 REQUEST = httpx.Request("POST", "https://example.test/chat/completions")
 
 
-def status_error(cls, status: int, message: str = "error"):
-    return cls(message, response=httpx.Response(status, request=REQUEST), body=None)
+def status_error(cls, status: int, message: str = "error", headers: dict | None = None):
+    response = httpx.Response(status, request=REQUEST, headers=headers or {})
+    return cls(message, response=response, body=None)
 
 
 class FakeLLM:
-    """Replaces the OpenAI client. `replies[provider]` is a text or an exception."""
+    """Replaces the OpenAI client. `replies[provider]` is a text, an exception,
+    or a list of those (one per call, in order)."""
 
     def __init__(self):
         self.replies = {}
         self.calls = []  # which providers were called, in order
+        self.kwargs = []  # the arguments of each call
 
     def client(self, api_key, base_url, timeout, max_retries):
         provider = "groq" if base_url and "groq" in base_url else "openai"
 
         def create(**kwargs):
             self.calls.append(provider)
+            self.kwargs.append(kwargs)
             reply = self.replies[provider]
+            if isinstance(reply, list):
+                reply = reply.pop(0)
             if isinstance(reply, Exception):
                 raise reply
             message = SimpleNamespace(content=reply)
@@ -132,3 +138,54 @@ def test_hidden_thinking_is_removed(fake):
 def test_api_keys_are_hidden_when_settings_are_printed(fake):
     assert "gsk_test" not in str(settings)
     assert "gsk_test" not in repr(settings)
+
+
+# --- Options used by the flooring extractor ---
+
+
+def rate_limit(retry_after: str):
+    return status_error(openai.RateLimitError, 429, headers={"retry-after": retry_after})
+
+
+def test_waits_as_long_as_provider_asks_then_retries_same_provider(fake, monkeypatch):
+    slept = []
+    monkeypatch.setattr(llm.time, "sleep", slept.append)
+    fake.replies = {"groq": [rate_limit("7"), "done"], "openai": "unused"}
+
+    result = llm.complete("system", "user", max_wait_seconds=60)
+
+    assert result == {"text": "done", "provider": "groq", "model": settings.groq_model}
+    assert slept == [7.0]
+    assert fake.calls == ["groq", "groq"]
+
+
+def test_rate_limit_without_retry_after_waits_default_time(fake, monkeypatch):
+    slept = []
+    monkeypatch.setattr(llm.time, "sleep", slept.append)
+    fake.replies = {"groq": [status_error(openai.RateLimitError, 429), "done"]}
+
+    assert llm.complete("system", "user", max_wait_seconds=60)["text"] == "done"
+    assert slept == [llm.DEFAULT_RATE_LIMIT_WAIT]
+
+
+def test_chat_does_not_wait_on_rate_limit(fake, monkeypatch):
+    monkeypatch.setattr(llm.time, "sleep", lambda s: pytest.fail("should not wait"))
+    fake.replies = {"groq": rate_limit("7"), "openai": "answer"}
+
+    assert llm.complete("system", "user")["provider"] == "openai"  # default: no waiting
+
+
+def test_does_not_wait_longer_than_allowed(fake, monkeypatch):
+    monkeypatch.setattr(llm.time, "sleep", lambda s: pytest.fail("should not wait"))
+    fake.replies = {"groq": rate_limit("90"), "openai": "answer"}
+
+    assert llm.complete("system", "user", max_wait_seconds=60)["provider"] == "openai"
+
+
+def test_json_mode_and_max_tokens_are_sent(fake):
+    fake.replies = {"groq": "{}"}
+
+    llm.complete("system", "user", json_mode=True, max_tokens=1200)
+
+    assert fake.kwargs[0]["response_format"] == {"type": "json_object"}
+    assert fake.kwargs[0]["max_tokens"] == 1200

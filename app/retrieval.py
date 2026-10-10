@@ -1,3 +1,4 @@
+import re
 import uuid
 
 from app.db import get_connection
@@ -27,11 +28,50 @@ def find_similar_chunks(document_id: uuid.UUID, question_embedding, top_k: int) 
     """
     with get_connection() as conn:
         rows = conn.execute(
-            """SELECT page_number, text, embedding <=> %s AS distance
+            """SELECT chunk_index, page_number, text, embedding <=> %s AS distance
                FROM chunks
                WHERE document_id = %s
                ORDER BY embedding <=> %s
                LIMIT %s""",
             (question_embedding, document_id, question_embedding, top_k),
         ).fetchall()
-    return [{"page_number": r[0], "text": r[1], "distance": float(r[2])} for r in rows]
+    return [
+        {"chunk_index": r[0], "page_number": r[1], "text": r[2], "distance": float(r[3])}
+        for r in rows
+    ]
+
+
+def find_chunks_by_keywords(
+    document_id: uuid.UUID, keywords: list[str], limit: int, exclude: list[int]
+) -> list[dict]:
+    """Chunks containing any of the exact keywords/codes (e.g. "LVP", "CPT-2").
+
+    This is the "keyword" half of hybrid search: embeddings miss abbreviations and
+    codes, but plain text matching doesn't. Chunks mentioning the keywords most
+    often come first (a finish schedule beats a passing mention).
+    """
+    if not keywords:
+        return []
+    # Postgres regex: \m and \M are word start/end; re.escape protects "-" etc.
+    pattern = r"\m(" + "|".join(re.escape(k) for k in keywords) + r")\M"
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT chunk_index, page_number, text
+               FROM chunks
+               WHERE document_id = %s AND text ~* %s AND chunk_index <> ALL(%s)
+               ORDER BY regexp_count(text, %s, 1, 'i') DESC, chunk_index
+               LIMIT %s""",
+            (document_id, pattern, exclude, pattern, limit),
+        ).fetchall()
+    return [{"chunk_index": r[0], "page_number": r[1], "text": r[2], "distance": None} for r in rows]
+
+
+def get_all_chunks(document_id: uuid.UUID) -> list[dict]:
+    """Every chunk of a document in reading order (used by the flooring extractor)."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT chunk_index, page_number, text FROM chunks
+               WHERE document_id = %s ORDER BY chunk_index""",
+            (document_id,),
+        ).fetchall()
+    return [{"chunk_index": r[0], "page_number": r[1], "text": r[2]} for r in rows]

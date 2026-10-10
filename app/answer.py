@@ -14,9 +14,13 @@ NOT_FOUND_ANSWER = "I couldn't find that in the document."
 CITATION = re.compile(r"\[p\.\s*(\d+)\]")
 
 
-def build_user_prompt(question: str, chunks: list[dict]) -> str:
+def build_user_prompt(question: str, chunks: list[dict], hint: str | None = None) -> str:
     excerpts = "\n\n".join(f"[p. {c['page_number']}] {c['text']}" for c in chunks)
-    return f"Excerpts:\n{excerpts}\n\nQuestion: {question}"
+    # The hint (e.g. "Resilient flooring includes LVT, LVP...") is only added when the
+    # question is about a flooring category, so normal questions cost no extra tokens.
+    # Labelled clearly so the model doesn't think the hint is part of the document.
+    note = f"Glossary (general knowledge, NOT from the document; don't cite it): {hint}\n\n" if hint else ""
+    return f"Excerpts:\n{excerpts}\n\n{note}Question: {question}"
 
 
 def check_citations(answer: str, chunks: list[dict]) -> tuple[str, list[dict]]:
@@ -42,13 +46,13 @@ def check_citations(answer: str, chunks: list[dict]) -> tuple[str, list[dict]]:
     return answer, sources
 
 
-def answer_question(question: str, chunks: list[dict]) -> dict:
+def answer_question(question: str, chunks: list[dict], hint: str | None = None) -> dict:
     """Ask the LLM using the retrieved chunks. Returns answer, sources, provider, model."""
     if not chunks:
         # No text in this document (e.g. scanned pages): don't spend tokens on it.
         return {"answer": NOT_FOUND_ANSWER, "sources": [], "provider": None, "model": None}
 
-    result = llm.complete(SYSTEM_PROMPT, build_user_prompt(question, chunks))
+    result = llm.complete(SYSTEM_PROMPT, build_user_prompt(question, chunks, hint))
     answer, sources = check_citations(result["text"], chunks)
     return {
         "answer": answer,

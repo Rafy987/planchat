@@ -67,3 +67,33 @@ export function askQuestion(documentId: string, question: string): Promise<AskRe
     body: JSON.stringify({ document_id: documentId, question }),
   });
 }
+
+export type FlooringItem = {
+  code: string;
+  category: string;
+  product: string;
+  manufacturer: string;
+  rooms: string[];
+  pages: number[];
+};
+
+export type FlooringSchedule = {
+  document_id: string;
+  extracted_at: string | null; // null = not extracted yet
+  items: FlooringItem[];
+  warnings: string[];
+};
+
+export function getFlooring(documentId: string): Promise<FlooringSchedule> {
+  return request(`/documents/${encodeURIComponent(documentId)}/flooring`);
+}
+
+// Runs the AI extraction on the server. Can take a minute or two on big plan sets.
+export function extractFlooring(documentId: string): Promise<FlooringSchedule> {
+  return request(`/documents/${encodeURIComponent(documentId)}/flooring`, { method: "POST" });
+}
+
+// A plain link: the browser downloads the CSV file itself.
+export function flooringCsvUrl(documentId: string): string {
+  return `${API_URL}/documents/${encodeURIComponent(documentId)}/flooring.csv`;
+}

@@ -74,10 +74,16 @@ export default function ChatPage({ params }: PageProps<"/chat/[documentId]">) {
         >
           ←
         </Link>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate font-semibold">{doc?.filename ?? "Loading…"}</p>
           {doc && <p className="text-xs text-slate-500">{doc.page_count} pages</p>}
         </div>
+        <Link
+          href={`/chat/${encodeURIComponent(documentId)}/flooring`}
+          className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:border-blue-400 dark:border-slate-700"
+        >
+          Flooring
+        </Link>
       </header>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
