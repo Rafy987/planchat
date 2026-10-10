@@ -3,12 +3,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, UploadFile
 
+from app.answer import answer_question
 from app.chunking import chunk_pages
 from app.config import settings
 from app.db import close_pool, init_db, save_document
 from app.embeddings import embed_texts, get_model
+from app.llm import LLMUnavailableError
 from app.pdf_utils import InvalidPDFError, extract_pages
-from app.schemas import DocumentUploadResponse
+from app.retrieval import document_exists, find_similar_chunks
+from app.schemas import AskRequest, AskResponse, DocumentUploadResponse
 
 
 @asynccontextmanager
@@ -79,3 +82,21 @@ def upload_document(file: UploadFile):
         chunk_count=len(chunks),
         pages_without_text=[p["page_number"] for p in pages if not p["text"]],
     )
+
+
+@app.post("/ask", response_model=AskResponse)
+def ask(request: AskRequest):
+    if not document_exists(request.document_id):
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # 1. Find the chunks of this document closest in meaning to the question.
+    question_embedding = embed_texts([request.question])[0]
+    chunks = find_similar_chunks(request.document_id, question_embedding, settings.top_k)
+
+    # 2. Ask the LLM to answer from those chunks only, with page citations.
+    try:
+        result = answer_question(request.question, chunks)
+    except LLMUnavailableError as error:
+        raise HTTPException(status_code=503, detail=error.message)
+
+    return AskResponse(**result)
