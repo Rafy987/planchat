@@ -49,6 +49,9 @@ This is a portfolio project. It must be real, deployed with a live link, and hav
 8. Evaluation: 20 test questions, measure accuracy, show score in README
 9. Rate limiting + basic error handling
 10. GitHub Actions CI, deploy, final README (live link, screenshot, architecture diagram, how to run)
+11. Vision mode: render drawing pages (little/no extractable text) to images → vision LLM describes each sheet (sheet title, rooms, finish tags, legend, schedules) → store as chunks with page numbers, so search, /ask and the flooring extractor use them. Vision LLM: Gemini API (key in `.env` as `GEMINI_API_KEY`), starting with Gemini Flash-Lite. Optional legend detector (YOLO) only offline/locally, not on the free server.
+    - Gemini FREE tier only for sample/public PDFs (Google may use free-tier data to improve its products).
+    - Real client plan sets need the Gemini PAID tier or Claude Haiku (paid; no training on uploaded images).
 
 ## Rules
 - Use only public or sample PDFs for testing and demo. No real client documents in the repo.

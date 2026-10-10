@@ -1,0 +1,14 @@
+# Keep secrets, local files and things the backend doesn't need out of the image.
+.env
+.env.*
+.git
+.venv
+.cache
+uploads
+frontend
+evaluation
+tests
+postman
+__pycache__
+*.pyc
+.pytest_cache
