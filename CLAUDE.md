@@ -26,7 +26,7 @@ This is a portfolio project. It must be real, deployed with a live link, and hav
 - Backend: Python 3.13, FastAPI
 - PDF reading: pypdf or PyMuPDF
 - Database: Neon (cloud PostgreSQL with pgvector). Connection string goes in `.env` as `DATABASE_URL`
-- LLM: Groq API (LLaMA models)
+- LLM: Groq API (qwen/qwen3.8-27b; Groq retired its LLaMA chat models), OpenAI optional fallback via LLM_PROVIDER
 - Embeddings: a free/open embedding model (e.g. sentence-transformers) or an embeddings API — discuss with me first
 - Frontend: Next.js + TypeScript + Tailwind (later phase)
 - Testing: pytest (backend), Postman collection for API
