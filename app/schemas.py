@@ -13,6 +13,12 @@ class DocumentUploadResponse(BaseModel):
     pages_without_text: list[int]
 
 
+class DocumentInfo(BaseModel):
+    document_id: str
+    filename: str
+    page_count: int
+
+
 class AskRequest(BaseModel):
     document_id: uuid.UUID  # an invalid ID is rejected with 422 automatically
     # Spaces are trimmed; empty questions are rejected; the max length saves tokens.

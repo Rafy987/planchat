@@ -2,6 +2,7 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.answer import answer_question
 from app.chunking import chunk_pages
@@ -10,8 +11,8 @@ from app.db import close_pool, init_db, save_document
 from app.embeddings import embed_texts, get_model
 from app.llm import LLMUnavailableError
 from app.pdf_utils import InvalidPDFError, extract_pages
-from app.retrieval import document_exists, find_similar_chunks
-from app.schemas import AskRequest, AskResponse, DocumentUploadResponse
+from app.retrieval import document_exists, find_similar_chunks, get_document
+from app.schemas import AskRequest, AskResponse, DocumentInfo, DocumentUploadResponse
 
 
 @asynccontextmanager
@@ -25,6 +26,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+
+# CORS: browsers block a page on one site (e.g. localhost:3000, the frontend) from
+# calling an API on another (localhost:8000) unless the API says that site is allowed.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 
 @app.get("/")
@@ -82,6 +92,14 @@ def upload_document(file: UploadFile):
         chunk_count=len(chunks),
         pages_without_text=[p["page_number"] for p in pages if not p["text"]],
     )
+
+
+@app.get("/documents/{document_id}", response_model=DocumentInfo)
+def read_document(document_id: uuid.UUID):
+    document = get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return document
 
 
 @app.post("/ask", response_model=AskResponse)

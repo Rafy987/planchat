@@ -2,7 +2,7 @@
 
 AI assistant for construction plan sets and spec books (PDFs). Ask questions, get answers with page citations.
 
-> Work in progress — currently Phase 5 (ask questions with page citations).
+> Work in progress — currently Phase 6 (web frontend).
 
 ## Tech (so far)
 - Python 3.13, FastAPI, Uvicorn
@@ -11,7 +11,8 @@ AI assistant for construction plan sets and spec books (PDFs). Ask questions, ge
 - Neon (cloud Postgres) + pgvector for storing chunks and their embeddings
 - psycopg 3 (plain SQL, no ORM) with a connection pool
 - LLM: Groq (`qwen/qwen3.8-27b`, free tier) by default, OpenAI as optional fallback, both via the `openai` library
-- pytest for tests
+- Frontend: Next.js 16 + TypeScript + Tailwind CSS (in [`frontend/`](frontend/))
+- pytest (backend) and Vitest (frontend) for tests
 
 ## Run locally (Windows)
 
@@ -34,12 +35,29 @@ On first start the embedding model (~70 MB) is downloaded to `.cache/fastembed` 
 
 Open http://localhost:8000/docs to see the API.
 
+## Run the frontend
+
+Use a **second terminal** (the backend from the step above must be running):
+
+```powershell
+cd frontend
+npm install
+copy .env.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:8000
+npm run dev
+```
+
+Open http://localhost:3000, upload a PDF, then ask questions. Tap a **p. N** button in an answer to see the text from that page.
+
+- Works on phones: single column, input fixed at the bottom, no zoom-in on tap.
+- The backend only accepts browser requests from sites listed in `CORS_ORIGINS` (default `["http://localhost:3000"]`).
+
 ## Endpoints
 | Method | Path      | Returns                                 |
 |--------|-----------|-----------------------------------------|
 | GET    | `/`       | `{"message": "Hello from PlanChat"}`    |
 | GET    | `/health` | `{"status": "ok"}`                      |
 | POST   | `/documents` | Upload a PDF; extracts, chunks, embeds and stores it |
+| GET    | `/documents/{id}` | File name and page count of one document |
 | POST   | `/ask` | Ask a question about one document; answer with page citations |
 
 ### Upload a PDF

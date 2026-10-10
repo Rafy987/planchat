@@ -3,6 +3,16 @@ import uuid
 from app.db import get_connection
 
 
+def get_document(document_id: uuid.UUID) -> dict | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id, filename, page_count FROM documents WHERE id = %s", (document_id,)
+        ).fetchone()
+    if row is None:
+        return None
+    return {"document_id": str(row[0]), "filename": row[1], "page_count": row[2]}
+
+
 def document_exists(document_id: uuid.UUID) -> bool:
     with get_connection() as conn:
         row = conn.execute("SELECT 1 FROM documents WHERE id = %s", (document_id,)).fetchone()

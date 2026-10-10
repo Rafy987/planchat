@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_name: str = "PlanChat"
+    # Websites allowed to call this API from a browser (CORS). In .env use JSON:
+    # CORS_ORIGINS=["http://localhost:3000","https://your-app.vercel.app"]
+    cors_origins: list[str] = ["http://localhost:3000"]
     # Neon Postgres connection string (see .env.example).
     database_url: str | None = None
 
