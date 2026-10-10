@@ -1,13 +1,27 @@
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, UploadFile
 
 from app.chunking import chunk_pages
 from app.config import settings
+from app.db import close_pool, init_db, save_document
+from app.embeddings import embed_texts, get_model
 from app.pdf_utils import InvalidPDFError, extract_pages
-from app.schemas import Chunk, DocumentUploadResponse, PageText
+from app.schemas import DocumentUploadResponse
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Runs once when the server starts: create tables, load the embedding model.
+    init_db()
+    get_model()
+    yield
+    # Runs when the server stops.
+    close_pool()
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 
 @app.get("/")
@@ -21,8 +35,8 @@ def health():
     return {"status": "ok"}
 
 
-# A normal `def` (not `async def`): PDF parsing is slow CPU work, and FastAPI runs
-# `def` endpoints in a thread pool so one big upload doesn't freeze the whole server.
+# A normal `def` (not `async def`): PDF parsing and embedding are slow CPU work, and
+# FastAPI runs `def` endpoints in a thread pool so one big upload doesn't freeze the server.
 @app.post("/documents", response_model=DocumentUploadResponse)
 def upload_document(file: UploadFile):
     max_bytes = settings.max_upload_mb * 1024 * 1024
@@ -45,19 +59,23 @@ def upload_document(file: UploadFile):
     except InvalidPDFError:
         raise HTTPException(status_code=400, detail="PDF is damaged or unreadable")
 
-    # Save under a random ID so two "plans.pdf" uploads never overwrite each other,
-    # and a strange filename can't write outside the uploads folder.
-    document_id = uuid.uuid4().hex
+    chunks = chunk_pages(pages, settings.chunk_size, settings.chunk_overlap)
+    embeddings = embed_texts([c["text"] for c in chunks])
+
+    # A random ID so two "plans.pdf" uploads never clash, and a strange filename
+    # can't write outside the uploads folder.
+    document_id = uuid.uuid4()
+    filename = file.filename or "upload.pdf"
+    save_document(document_id, filename, len(pages), chunks, embeddings)
+
+    # Save the file only after the database save worked.
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     (settings.upload_dir / f"{document_id}.pdf").write_bytes(pdf_bytes)
 
-    chunks = chunk_pages(pages, settings.chunk_size, settings.chunk_overlap)
-
     return DocumentUploadResponse(
-        document_id=document_id,
-        filename=file.filename or "upload.pdf",
+        document_id=str(document_id),
+        filename=filename,
         page_count=len(pages),
-        pages=[PageText(**page, has_text=bool(page["text"])) for page in pages],
         chunk_count=len(chunks),
-        chunks=[Chunk(**chunk) for chunk in chunks],
+        pages_without_text=[p["page_number"] for p in pages if not p["text"]],
     )

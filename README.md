@@ -2,13 +2,15 @@
 
 AI assistant for construction plan sets and spec books (PDFs). Ask questions, get answers with page citations.
 
-> Work in progress — currently Phase 3 (chunking).
+> Work in progress — currently Phase 4 (embeddings + pgvector storage).
 
 ## Tech (so far)
 - Python 3.13, FastAPI, Uvicorn
 - PyMuPDF for PDF text extraction
+- fastembed with `BAAI/bge-small-en-v1.5` for embeddings (free, runs on CPU, no API key)
+- Neon (cloud Postgres) + pgvector for storing chunks and their embeddings
+- psycopg 3 (plain SQL, no ORM) with a connection pool
 - pytest for tests
-- Database: Neon (cloud Postgres + pgvector) — coming in a later phase
 
 ## Run locally (Windows)
 
@@ -20,12 +22,14 @@ py -3.13 -m venv .venv
 # 2. Install dependencies
 pip install -r requirements-dev.txt
 
-# 3. Copy env file and fill in values (not needed yet for Phase 1)
+# 3. Copy env file and put your Neon connection string in DATABASE_URL
 copy .env.example .env
 
 # 4. Start the server
 uvicorn app.main:app --reload
 ```
+
+On first start the embedding model (~70 MB) is downloaded to `.cache/fastembed` and the database tables are created automatically.
 
 Open http://localhost:8000/docs to see the API.
 
@@ -34,7 +38,7 @@ Open http://localhost:8000/docs to see the API.
 |--------|-----------|-----------------------------------------|
 | GET    | `/`       | `{"message": "Hello from PlanChat"}`    |
 | GET    | `/health` | `{"status": "ok"}`                      |
-| POST   | `/documents` | Upload a PDF; returns its text page by page and its chunks |
+| POST   | `/documents` | Upload a PDF; extracts, chunks, embeds and stores it |
 
 ### Upload a PDF
 
@@ -44,23 +48,16 @@ curl.exe -F "file=@plans.pdf" http://localhost:8000/documents
 
 ```json
 {
-  "document_id": "e7b28945a43b47a6b067b439a88a4507",
+  "document_id": "00ed325b-9a37-4a20-8ab9-72a3f9593abd",
   "filename": "plans.pdf",
   "page_count": 2,
-  "pages": [
-    {"page_number": 1, "text": "Sheet A-101", "has_text": true},
-    {"page_number": 2, "text": "Room 204: Carpet Tile CPT-1", "has_text": true}
-  ],
   "chunk_count": 2,
-  "chunks": [
-    {"chunk_index": 0, "page_number": 1, "text": "Sheet A-101"},
-    {"chunk_index": 1, "page_number": 2, "text": "Room 204: Carpet Tile CPT-1"}
-  ]
+  "pages_without_text": []
 }
 ```
 
 - Files are saved to `uploads/<document_id>.pdf` (git-ignored).
-- `has_text: false` usually means a scanned page (image only). OCR is not supported yet.
+- `pages_without_text` lists pages with no text, usually scanned images. OCR is not supported yet.
 - Errors: `400` for empty, non-PDF or damaged files; `413` for files over 50 MB.
 
 ### How chunking works
@@ -73,11 +70,24 @@ The text is split into small pieces (**chunks**) so that later only the few piec
 - Cuts happen at a paragraph break, then a line break, then a space, never in the middle of a word.
 - Both numbers are settings (`CHUNK_SIZE`, `CHUNK_OVERLAP`) and will be tuned in the evaluation phase.
 
+### How embeddings and storage work
+
+- Each chunk is turned into an **embedding**: a list of 384 numbers that captures its meaning. Texts with similar meaning get similar numbers, so "What flooring is in Room 204?" lands close to "Room 204: Carpet Tile CPT-1" even with different words.
+- **Model: `bge-small-en-v1.5` via fastembed.** Free, private (text never leaves the server), and it uses ONNX instead of PyTorch, so it fits on a small free-tier server.
+- Chunks and embeddings are stored in Postgres with **pgvector**:
+  - `documents(id, filename, page_count, created_at)`
+  - `chunks(id, document_id, chunk_index, page_number, text, embedding vector(384))`, deleted automatically with their document
+  - an **HNSW index** on `embedding` for fast similarity search
+- A document and all its chunks are saved in **one transaction**: either everything is saved or nothing is.
+- A **connection pool** reuses open database connections. Opening a new one to Neon takes seconds; reusing one is near-instant.
+
 ## Run tests
 
 ```powershell
 pytest
 ```
+
+Database tests use `DATABASE_URL` and delete every row they create. They are skipped if `DATABASE_URL` is not set. Most tests use a fake embedder for speed; one test uses the real model.
 
 ## License
 

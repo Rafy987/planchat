@@ -1,11 +1,14 @@
+import numpy as np
 import pymupdf
 import pytest
 from fastapi.testclient import TestClient
 
+import app.main
 from app.config import settings
-from app.main import app
+from app.embeddings import EMBEDDING_DIM
+from app.main import app as fastapi_app
 
-client = TestClient(app)
+client = TestClient(fastapi_app)
 
 # Known text for each page, so tests can check every page number matches its text.
 SAMPLE_PAGES = [
@@ -27,56 +30,113 @@ def make_pdf(page_texts: list[str]) -> bytes:
     return pdf_bytes
 
 
+def fake_embed_texts(texts: list[str]) -> list:
+    """Stand-in for the real model: fast, no download. Vector i is filled with i+1."""
+    return [np.full(EMBEDDING_DIM, i + 1, dtype=np.float32) for i in range(len(texts))]
+
+
 @pytest.fixture(autouse=True)
-def temp_upload_dir(tmp_path, monkeypatch):
-    """Save uploads to a temp folder during tests, not the real uploads/ folder."""
+def test_setup(tmp_path, monkeypatch):
+    """Save uploads to a temp folder and use the fake embedder in every test here."""
     monkeypatch.setattr(settings, "upload_dir", tmp_path)
+    monkeypatch.setattr(app.main, "embed_texts", fake_embed_texts)
     return tmp_path
 
 
-def upload(content: bytes, filename: str = "plans.pdf"):
-    return client.post(
+def upload(content: bytes, filename: str = "plans.pdf", created: list | None = None):
+    response = client.post(
         "/documents", files={"file": (filename, content, "application/pdf")}
     )
+    if created is not None and response.status_code == 200:
+        created.append(response.json()["document_id"])  # so cleanup deletes it
+    return response
 
 
-def test_upload_returns_text_for_each_page_with_page_numbers():
-    response = upload(make_pdf(SAMPLE_PAGES))
+# --- Successful uploads (need the database) ---
+
+
+def test_upload_returns_summary(created_documents):
+    response = upload(make_pdf(SAMPLE_PAGES + [""]), created=created_documents)
 
     assert response.status_code == 200
     body = response.json()
     assert body["filename"] == "plans.pdf"
-    assert body["page_count"] == 3
-    assert [p["page_number"] for p in body["pages"]] == [1, 2, 3]
-    for page, expected in zip(body["pages"], SAMPLE_PAGES):
-        assert page["text"] == expected
-        assert page["has_text"] is True
+    assert body["page_count"] == 4
+    assert body["chunk_count"] == 3  # the empty 4th page gives no chunk
+    assert body["pages_without_text"] == [4]
 
 
-def test_upload_saves_file_to_disk(temp_upload_dir):
+def test_upload_saves_document_row(created_documents, db):
+    body = upload(make_pdf(SAMPLE_PAGES), created=created_documents).json()
+
+    row = db.execute(
+        "SELECT filename, page_count FROM documents WHERE id = %s", (body["document_id"],)
+    ).fetchone()
+    assert row == ("plans.pdf", 3)
+
+
+def test_upload_saves_chunks_with_page_numbers_and_embeddings(created_documents, db):
+    body = upload(make_pdf(SAMPLE_PAGES), created=created_documents).json()
+
+    rows = db.execute(
+        """SELECT chunk_index, page_number, text, embedding FROM chunks
+           WHERE document_id = %s ORDER BY chunk_index""",
+        (body["document_id"],),
+    ).fetchall()
+
+    assert [(r[0], r[1], r[2]) for r in rows] == [
+        (0, 1, SAMPLE_PAGES[0]),
+        (1, 2, SAMPLE_PAGES[1]),
+        (2, 3, SAMPLE_PAGES[2]),
+    ]
+    # Each chunk got its own embedding (384 numbers) from the fake embedder.
+    for i, row in enumerate(rows):
+        embedding = row[3].to_numpy()
+        assert embedding.shape == (EMBEDDING_DIM,)
+        assert np.allclose(embedding, i + 1)
+
+
+def test_upload_saves_file_to_disk(created_documents, test_setup):
     pdf_bytes = make_pdf(SAMPLE_PAGES)
-    body = upload(pdf_bytes).json()
+    body = upload(pdf_bytes, created=created_documents).json()
 
-    saved = temp_upload_dir / f"{body['document_id']}.pdf"
+    saved = test_setup / f"{body['document_id']}.pdf"
     assert saved.read_bytes() == pdf_bytes
 
 
-def test_page_without_text_is_flagged():
-    body = upload(make_pdf(["Page one", ""])).json()
+def test_deleting_document_also_deletes_its_chunks(created_documents, db):
+    document_id = upload(make_pdf(SAMPLE_PAGES), created=created_documents).json()["document_id"]
 
-    assert body["pages"][1] == {"page_number": 2, "text": "", "has_text": False}
+    db.execute("DELETE FROM documents WHERE id = %s", (document_id,))
+
+    count = db.execute(
+        "SELECT count(*) FROM chunks WHERE document_id = %s", (document_id,)
+    ).fetchone()[0]
+    assert count == 0
 
 
-def test_upload_returns_chunks_with_page_numbers():
-    body = upload(make_pdf(SAMPLE_PAGES + [""])).json()
+def test_nothing_saved_if_database_save_fails(created_documents, db, test_setup, monkeypatch):
+    # Give the LAST chunk a vector of the wrong size. Postgres rejects it, so the save
+    # fails after the document row and the first chunks were already inserted.
+    def broken_embedder(texts):
+        vectors = fake_embed_texts(texts)
+        vectors[-1] = np.ones(3, dtype=np.float32)
+        return vectors
 
-    # 3 short pages with text -> one chunk each; the empty 4th page -> no chunk.
-    assert body["chunk_count"] == 3
-    assert [(c["page_number"], c["text"]) for c in body["chunks"]] == [
-        (1, SAMPLE_PAGES[0]),
-        (2, SAMPLE_PAGES[1]),
-        (3, SAMPLE_PAGES[2]),
-    ]
+    monkeypatch.setattr(app.main, "embed_texts", broken_embedder)
+
+    with pytest.raises(Exception, match="dimensions"):
+        upload(make_pdf(SAMPLE_PAGES), filename="should-not-exist.pdf")
+
+    # The transaction was rolled back: no document row, and no file on disk.
+    count = db.execute(
+        "SELECT count(*) FROM documents WHERE filename = 'should-not-exist.pdf'"
+    ).fetchone()[0]
+    assert count == 0
+    assert list(test_setup.iterdir()) == []
+
+
+# --- Rejected uploads (no database needed) ---
 
 
 def test_rejects_non_pdf_even_with_pdf_name():
@@ -108,7 +168,7 @@ def test_rejects_file_over_size_limit(monkeypatch):
     assert response.status_code == 413
 
 
-def test_damaged_upload_is_not_saved(temp_upload_dir):
+def test_damaged_upload_is_not_saved(test_setup):
     upload(b"%PDF-1.7 broken")
 
-    assert list(temp_upload_dir.iterdir()) == []
+    assert list(test_setup.iterdir()) == []

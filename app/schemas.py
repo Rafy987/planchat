@@ -1,23 +1,10 @@
 from pydantic import BaseModel
 
 
-class PageText(BaseModel):
-    page_number: int
-    text: str
-    # False usually means a scanned page (image only). We don't do OCR yet.
-    has_text: bool
-
-
-class Chunk(BaseModel):
-    chunk_index: int
-    page_number: int
-    text: str
-
-
 class DocumentUploadResponse(BaseModel):
     document_id: str
     filename: str
     page_count: int
-    pages: list[PageText]
     chunk_count: int
-    chunks: list[Chunk]
+    # Pages with no text are usually scanned images. We don't do OCR yet.
+    pages_without_text: list[int]

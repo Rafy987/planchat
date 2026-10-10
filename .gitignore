@@ -15,3 +15,6 @@ Thumbs.db
 
 # Uploaded PDFs (never commit client documents)
 uploads/
+
+# Downloaded embedding model
+.cache/

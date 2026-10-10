@@ -21,5 +21,8 @@ class Settings(BaseSettings):
     chunk_size: int = 800
     chunk_overlap: int = 150
 
+    # Where the embedding model is downloaded to (~70 MB, git-ignored).
+    embedding_cache_dir: Path = Path(".cache/fastembed")
+
 
 settings = Settings()
